@@ -1,0 +1,14 @@
+# Tested together on Python 3.12/3.13 (Oct 2026). Pinned so pip resolves quickly and reproducibly.
+# Payments (x402 v2 client) + wallet signing
+x402[httpx,evm]==2.25.0
+eth-account==0.14.0
+httpx==0.28.1
+python-dotenv==1.2.4
+mcp==1.28.1
+# Frameworks (install only the ones you use)
+langchain==1.4.3
+langchain-openai==1.6.7        # only for --agent
+langchain-mcp-adapters==0.3.2
+openai-agents==0.20.0
+crewai==1.15.23
+crewai-tools[mcp]==1.15.23
