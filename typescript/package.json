@@ -6,7 +6,8 @@
   "scripts": {
     "ai-sdk": "tsx src/vercel-ai-sdk.ts",
     "agentkit": "tsx src/coinbase-agentkit.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "quickstart-token-verdict": "tsx src/quickstart-token-verdict.ts"
   },
   "engines": {
     "node": ">=20"

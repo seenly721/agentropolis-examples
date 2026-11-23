@@ -6,13 +6,111 @@
 [![smoke](https://github.com/seenly721/agentropolis-examples/actions/workflows/smoke.yml/badge.svg)](https://github.com/seenly721/agentropolis-examples/actions/workflows/smoke.yml)
 
 Kits used in the examples:
-[![Token Preflight on Agentropolis](https://agentropolis.io/badge/seenly.seenly-token-preflight.svg)](https://agentropolis.io/listing/seenly.seenly-token-preflight)
+[![Token Verdict on Agentropolis](https://agentropolis.io/badge/seenly.seenly-token-preflight.svg)](https://agentropolis.io/listing/seenly.seenly-token-preflight)
+[![Pay Guard on Agentropolis](https://agentropolis.io/badge/seenly.seenly-pay-guard.svg)](https://agentropolis.io/listing/seenly.seenly-pay-guard)
 [![Transcript+ on Agentropolis](https://agentropolis.io/badge/seenly.seenly-transcript-plus.svg)](https://agentropolis.io/listing/seenly.seenly-transcript-plus)
 [![Pitch Kit on Agentropolis](https://agentropolis.io/badge/seenly.seenly-pitch-kit.svg)](https://agentropolis.io/listing/seenly.seenly-pitch-kit)
 
 [Agentropolis](https://agentropolis.io) is a free, no-auth search engine for agent tools: MCP servers,
 x402 and MPP pay-per-call APIs, A2A agents and "kits". Its trust scores come only from verified,
 non-wash on-chain payments.
+
+## Pay and call in 30 seconds
+
+No framework required. Search is free and needs no wallet. Paid calls use **your own wallet** (USDC on Base) and go to the seller directly. Put `BUYER_PRIVATE_KEY` in `.env` (git-ignored). Never commit it. The snippets refuse any quote above $0.05 or off Base.
+
+Tested Nov 23, 2026 against production: the search curl returns Token Verdict in `featured_first_party`, and paid calls to Token Verdict ($0.02) and Pay Guard ($0.01) settle on Base. Swap the URL and JSON body to call the other kit from either language.
+
+### 1. Search Agentropolis (free, no wallet)
+
+```bash
+curl -sS "https://agentropolis.io/api/v1/search?q=token+verdict"
+```
+
+First-party kits such as Token Verdict appear only in the labelled `featured_first_party` array, not mixed into organic `results`. A runnable copy is in [`scripts/quickstart-search.sh`](scripts/quickstart-search.sh).
+
+### 2. Token Verdict ($0.02) — Node
+
+Gives a Base ERC-20 an A–F grade and a safe/caution/avoid verdict from live on-chain checks. Not investment advice. From `typescript/` after `npm install`:
+
+```ts
+import "dotenv/config";
+import { x402Client, type PaymentPolicy } from "@x402/core/client";
+import { registerExactEvmScheme } from "@x402/evm/exact/client";
+import { wrapFetchWithPayment } from "@x402/fetch";
+import { privateKeyToAccount } from "viem/accounts";
+
+const key = process.env.BUYER_PRIVATE_KEY;
+if (!key || !/^0x[0-9a-fA-F]{64}$/.test(key)) {
+  throw new Error("Set BUYER_PRIVATE_KEY (0x + 64 hex) in .env. Never commit it.");
+}
+
+const cap = 50_000n; // $0.05 USDC, 6 decimals
+const guard: PaymentPolicy = (_v, reqs) =>
+  reqs.filter((r) => r.network === "eip155:8453" && BigInt(r.amount) <= cap);
+
+const client = new x402Client();
+registerExactEvmScheme(client, { signer: privateKeyToAccount(key as `0x${string}`), policies: [guard] });
+const paidFetch = wrapFetchWithPayment(fetch, client);
+
+const res = await paidFetch("https://seenly-token-preflight.vercel.app/api/token-preflight", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({
+    chain: "base",
+    tokenAddress: "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed", // DEGEN, a public example
+  }),
+});
+console.log(res.status, await res.json());
+```
+
+Runnable copy: `cd typescript && npm run quickstart-token-verdict`.
+
+### 3. Pay Guard ($0.01) — Python
+
+Pre-payment allow/warn/block for an x402 challenge. From the repo root, in the project venv after `pip install -r python/requirements.txt`:
+
+```python
+import asyncio, os, re
+from eth_account import Account
+from x402 import x402Client
+from x402.http.clients import x402HttpxClient
+from x402.mechanisms.evm.exact.register import register_exact_evm_client
+from x402.mechanisms.evm.signers import EthAccountSigner
+
+key = os.environ.get("BUYER_PRIVATE_KEY", "").strip()
+if not re.fullmatch(r"0x[0-9a-fA-F]{64}", key):
+    raise SystemExit("Set BUYER_PRIVATE_KEY (0x + 64 hex) in .env. Never commit it.")
+
+CAP = 50_000  # $0.05 USDC, 6 decimals
+client = x402Client()
+register_exact_evm_client(
+    client,
+    EthAccountSigner(Account.from_key(key)),
+    policies=[lambda _v, reqs: [r for r in reqs if r.network == "eip155:8453" and int(r.get_amount()) <= CAP]],
+)
+
+async def main():
+    async with x402HttpxClient(client, timeout=120) as http:
+        r = await http.post(
+            "https://seenly-pay-guard.vercel.app/api/guard",
+            json={
+                "domain": "seenly-payload-check.vercel.app",
+                "max_price_usd": 0.05,
+                "challenge": {
+                    "payTo": "0xeE6239F3E17bEBe5e89F21F29D74D68CAa0d78CE",
+                    "amount": "30000",
+                    "network": "eip155:8453",
+                    "resource": "https://seenly-payload-check.vercel.app/api/check",
+                },
+            },
+        )
+        print(r.status_code, r.json())
+
+asyncio.run(main())
+```
+
+Runnable copy: `python python/quickstart_pay_guard.py`. Load `.env` first (`set -a && source .env && set +a`, or `python-dotenv`).
 
 Each example here does the same four things with a different agent framework:
 
@@ -81,7 +179,7 @@ Dry run: add --pay to sign the payment with BUYER_PRIVATE_KEY.
 
 ## Choosing what to buy
 
-`KIT_ID` defaults to `seenly.seenly-token-preflight`, a $0.02 Base token safety check. Disclosure: it is a
+`KIT_ID` defaults to `seenly.seenly-token-preflight` (Token Verdict), a $0.02 Base token safety check with an A–F grade. Disclosure: it is a
 first-party kit by Seenly, which is affiliated with Agentropolis. Agentropolis labels first-party kits as
 "featured" and never mixes them into organic results.
 
@@ -90,7 +188,7 @@ no sample input. Always trust the seller's live 402 over any listed price.
 
 ## Free daily allowance (Seenly kits)
 
-Token Preflight, Transcript+ and Pitch Kit each give a few free calls per day. A request opts in with the
+Token Verdict, Transcript+ and Pitch Kit each give a few free calls per day. A request opts in with the
 header `X-Free-Allowance: use`; the `--free` flag sends it.
 
 - Each caller network (IPv4 /24 or IPv6 /64) gets 3 free calls per UTC day on each kit.
