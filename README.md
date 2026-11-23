@@ -21,6 +21,8 @@ No framework required. Search is free and needs no wallet. Paid calls use **your
 
 Tested Nov 23, 2026 against production: the search curl returns Token Verdict in `featured_first_party`, and paid calls to Token Verdict ($0.02) and Pay Guard ($0.01) settle on Base. Swap the URL and JSON body to call the other kit from either language.
 
+**One run = one payment.** Each run signs one fresh USDC authorization and the seller settles it once. A second run is a second, separate charge, so run the snippet *or* its runnable copy, not both. The runnable copies are dry runs unless you pass `--pay`, and they print the single settlement tx.
+
 ### 1. Search Agentropolis (free, no wallet)
 
 ```bash
@@ -37,7 +39,7 @@ Gives a Base ERC-20 an A–F grade and a safe/caution/avoid verdict from live on
 import "dotenv/config";
 import { x402Client, type PaymentPolicy } from "@x402/core/client";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
-import { wrapFetchWithPayment } from "@x402/fetch";
+import { decodePaymentResponseHeader, wrapFetchWithPayment } from "@x402/fetch";
 import { privateKeyToAccount } from "viem/accounts";
 
 const key = process.env.BUYER_PRIVATE_KEY;
@@ -61,17 +63,19 @@ const res = await paidFetch("https://seenly-token-preflight.vercel.app/api/token
     tokenAddress: "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed", // DEGEN, a public example
   }),
 });
+const receipt = res.headers.get("payment-response"); // one call = one payment = one settlement
 console.log(res.status, await res.json());
+if (receipt) console.log("Paid once. Settlement tx:", decodePaymentResponseHeader(receipt).transaction);
 ```
 
-Runnable copy: `cd typescript && npm run quickstart-token-verdict`.
+Runnable copy (same call, so don't run both): `cd typescript && npm run quickstart-token-verdict -- --pay`. Without `--pay` it only shows the 402 price.
 
 ### 3. Pay Guard ($0.01) — Python
 
 Pre-payment allow/warn/block for an x402 challenge. From the repo root, in the project venv after `pip install -r python/requirements.txt`:
 
 ```python
-import asyncio, os, re
+import asyncio, base64, json, os, re
 from eth_account import Account
 from x402 import x402Client
 from x402.http.clients import x402HttpxClient
@@ -105,12 +109,14 @@ async def main():
                 },
             },
         )
-        print(r.status_code, r.json())
+        print(r.status_code, r.json())  # one call = one payment = one settlement
+        if receipt := r.headers.get("payment-response"):
+            print("Paid once. Settlement tx:", json.loads(base64.b64decode(receipt + "=" * (-len(receipt) % 4)))["transaction"])
 
 asyncio.run(main())
 ```
 
-Runnable copy: `python python/quickstart_pay_guard.py`. Load `.env` first (`set -a && source .env && set +a`, or `python-dotenv`).
+Runnable copy (same call, so don't run both): `python python/quickstart_pay_guard.py --pay`. Without `--pay` it only shows the 402 price. Load `.env` first (`set -a && source .env && set +a`, or `python-dotenv`).
 
 Each example here does the same four things with a different agent framework:
 
